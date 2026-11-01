@@ -1,10 +1,14 @@
 # ============================================================
-# LAB 8: K-MEANS CLUSTERING
-# Dataset: Iris
+# LAB 8: K-MEANS CLUSTERING (UNSUPERVISED LEARNING)
+# Dataset: Iris (bundled with sklearn, no internet)
 #
-# Goal: group the flowers WITHOUT using their labels,
-# and decide how many groups (k) make sense using
-# the Elbow method and the Silhouette method.
+# Big picture: no labels are given. K-means groups similar
+# flowers automatically:
+#   1. place k centers randomly
+#   2. assign every point to its nearest center
+#   3. move each center to the average of its points
+#   4. repeat until nothing moves
+# We test which k works best with Elbow + Silhouette methods.
 # ============================================================
 
 import numpy as np
@@ -19,237 +23,183 @@ from sklearn.decomposition import PCA
 
 
 # ------------------------------------------------------------
-# 1. LOAD THE DATASET
+# STEP 1: LOAD THE DATA
 # ------------------------------------------------------------
 
 iris = load_iris()
-
 X = pd.DataFrame(iris.data, columns=iris.feature_names)
 
-# The true species are kept aside for interpretation only
-# (K-means never gets to see them).
+# Species kept aside only for the LAST comparison plot.
+# The clustering algorithm itself never sees them.
 true_species = pd.Series(iris.target).map(
-    {0: "setosa", 1: "versicolor", 2: "virginica"}
-)
+    {0: "setosa", 1: "versicolor", 2: "virginica"})
 
-print("First 5 Rows:")
+print("Data shape:", X.shape)
+print("\nFirst 5 rows:")
 print(X.head())
 
-print("\nDataset Shape:", X.shape)
-
 
 # ------------------------------------------------------------
-# 2. SCALE THE FEATURES
+# STEP 2: SCALE THE FEATURES
 # ------------------------------------------------------------
 
-# K-means measures distances, so a wide-ranging feature would
-# dominate the clustering. Scaling gives every feature the
-# same influence (mean 0, std 1).
+# K-means uses DISTANCE between points. Without scaling, a
+# wide-ranging feature would dominate every distance check.
+# Standardization gives all features the same voice.
 
 feature_scaler = StandardScaler()
 X_scaled = feature_scaler.fit_transform(X)
 
 
 # ------------------------------------------------------------
-# 3. ELBOW METHOD - HOW MANY CLUSTERS SHOULD WE PICK?
+# STEP 3: ELBOW METHOD FOR CHOOSING K
 # ------------------------------------------------------------
 
-# For candidate k values, fit K-means and record its WCSS
-# ("within-cluster sum of squares" = how tight the clusters are).
-# WCSS always decreases when k rises; the "elbow" is where the
-# decrease suddenly becomes small - adding clusters stops helping.
+# For k = 2..10 we fit K-means and record WCSS (sum of
+# squared distances of points to their center = "tightness").
+# More clusters always lower WCSS - the ELBOW point is where
+# tightening suddenly stops being worth extra clusters.
 
-candidate_k_values = range(2, 11)
-
+candidate_ks = list(range(2, 11))
 wcss_values = []
 
-for k in candidate_k_values:
+for k in candidate_ks:
 
     kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
     kmeans.fit(X_scaled)
-
-    wcss_values.append(kmeans.inertia_)
+    wcss_values.append(kmeans.inertia_)   # the WCSS value
 
 plt.figure(figsize=(8, 5))
-plt.plot(list(candidate_k_values), wcss_values, marker="o")
-plt.xlabel("Number of Clusters (K)")
-plt.ylabel("WCSS / Inertia")
-plt.title("Elbow Method")
-plt.xticks(list(candidate_k_values))
+plt.plot(candidate_ks, wcss_values, marker="o")
+plt.xlabel("Number of clusters (K)")
+plt.ylabel("WCSS (tightness)")
+plt.title("Elbow Method - bend decides the sensible K")
+plt.xticks(candidate_ks)
 plt.grid()
 plt.show()
 
 
 # ------------------------------------------------------------
-# 4. SILHOUETTE METHOD - ANOTHER WAY TO PICK K
+# STEP 4: SILHOUETTE METHOD - A DIFFERENT WAY TO CHOOSE K
 # ------------------------------------------------------------
 
-# For each point: (average distance to nearest OTHER cluster
-#                  - average distance inside its OWN cluster)
-#              divided by the larger distance
-# Score is between -1 and +1; higher = clusters well separated.
+# For each point compare:
+#   a = average distance to its OWN cluster (cohesion)
+#   b = average distance to the NEAREST other cluster (separation)
+# silhouette = (b - a) / max(a, b), between -1 and 1.
+# Pick the k with the highest average silhouette.
 
 silhouette_values = []
 
-for k in candidate_k_values:
+for k in candidate_ks:
 
     kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
     labels = kmeans.fit_predict(X_scaled)
+    silhouette_values.append(silhouette_score(X_scaled, labels))
 
-    score = silhouette_score(X_scaled, labels)
-    silhouette_values.append(score)
-
-    print(f"K = {k}: silhouette score = {round(score, 4)}")
+    print(f"K = {k}: silhouette = {round(silhouette_values[-1], 4)}")
 
 plt.figure(figsize=(8, 5))
-plt.plot(list(candidate_k_values), silhouette_values, marker="o")
-plt.xlabel("Number of Clusters (K)")
-plt.ylabel("Average Silhouette Score")
-plt.title("Silhouette Method")
+plt.plot(candidate_ks, silhouette_values, marker="o")
+plt.xlabel("Number of clusters (K)")
+plt.ylabel("Average silhouette score")
+plt.title("Silhouette Method - higher is better")
 plt.grid()
 plt.show()
 
-best_k = list(candidate_k_values)[np.argmax(silhouette_values)]
-
-print("\nBest number of clusters by silhouette:", best_k)
-print("(If 2 and 3 are close, 3 often matches the real species.)")
+best_k = candidate_ks[int(np.argmax(silhouette_values))]
+print("\nBest K by silhouette:", best_k)
 
 
 # ------------------------------------------------------------
-# 5. FIT THE FINAL K-MEANS MODEL
+# STEP 5: FIT THE FINAL MODEL WITH THE BEST K
 # ------------------------------------------------------------
 
 final_kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
-
 cluster_labels = final_kmeans.fit_predict(X_scaled)
 
-X_with_clusters = X.copy()
-X_with_clusters["Cluster"] = cluster_labels
-
-print("\nFirst 10 Rows with Cluster Numbers:")
-print(X_with_clusters.head(10))
-
-
-# ------------------------------------------------------------
-# 6. EVALUATE THE CLUSTERING
-# ------------------------------------------------------------
-
-# Silhouette (higher = better) and Davies-Bouldin (lower = better)
-# need no ground truth, so they work for all clustering problems.
-
-silhouette_final = silhouette_score(X_scaled, cluster_labels)
-davies_final = davies_bouldin_score(X_scaled, cluster_labels)
-
-print("\n========== CLUSTER EVALUATION ==========")
-print("Silhouette Score:    ", round(silhouette_final, 4))
-print("Davies-Bouldin Score:", round(davies_final, 4))
-print("WCSS (tightness):    ", round(final_kmeans.inertia_, 4))
-
-
-# ------------------------------------------------------------
-# 7. SHOW THE FOUND CLUSTERS AGAINST REAL SPECIES
-# ------------------------------------------------------------
-
 print("\nCluster sizes:")
-print(X_with_clusters["Cluster"].value_counts().sort_index())
-
-print("\nCluster vs true species (K-means never saw these):")
-comparison_table = pd.crosstab(
-    X_with_clusters["Cluster"],
-    true_species.values
-)
-print(comparison_table)
+print(X.assign(Cluster=cluster_labels)["Cluster"].value_counts())
 
 
 # ------------------------------------------------------------
-# 8. REDUCE TO 2 DIMENSIONS WITH PCA FOR VISUALIZATION
+# STEP 6: SCORE THE CLUSTERING QUALITY (NO LABELS NEEDED)
 # ------------------------------------------------------------
 
-# We clustered in 4-D. To draw a picture, PCA finds the 2 best
-# viewing directions (the directions with the most variance)
-# and every point is projected onto them.
+# Silhouette  -> higher is better (clusters well separated)
+# Davies-Bouldin -> lower is better (compact, far clusters)
+# WCSS        -> lower is better (tighter clusters)
+
+final_silhouette = silhouette_score(X_scaled, cluster_labels)
+final_davies = davies_bouldin_score(X_scaled, cluster_labels)
+
+print("\n=== CLUSTER EVALUATION ===")
+print("Silhouette score:     ", round(final_silhouette, 4))
+print("Davies-Bouldin score: ", round(final_davies, 4))
+print("WCSS:                 ", round(final_kmeans.inertia_, 4))
+
+
+# ------------------------------------------------------------
+# STEP 7: DOWNSCALE 4 DIMENSIONS TO 2 FOR PICTURES (PCA)
+# ------------------------------------------------------------
+
+# We cannot draw 4-D. PCA finds the two directions along
+# which the data is most spread out, then we look only
+# along those two - a 2-D "shadow" of the data.
 
 pca = PCA(n_components=2)
-X_pca = pca.fit_transform(X_scaled)
+X_2d = pca.fit_transform(X_scaled)
 
-# --- Plot: points colored by CLUSTER ---
+# Plot 1: points colored by the cluster K-means assigned.
 plt.figure(figsize=(8, 6))
-plt.scatter(
-    X_pca[:, 0],
-    X_pca[:, 1],
-    c=cluster_labels,
-    cmap="viridis",
-    s=50
-)
+plt.scatter(X_2d[:, 0], X_2d[:, 1],
+            c=cluster_labels, cmap="viridis", s=50)
 plt.xlabel("Principal Component 1")
 plt.ylabel("Principal Component 2")
-plt.title(f"K-Means Clustering (K = {best_k})")
+plt.title(f"K-Means Clusters (K = {best_k})")
 plt.show()
 
 
 # ------------------------------------------------------------
-# 9. SHOW THE FOUND CLUSTERS AGAINST REAL SPECIES
+# STEP 8: SHOW CLUSTER CENTERS ON THE SAME PICTURE
 # ------------------------------------------------------------
 
-# --- Plot: centroids marked with red X ---
-# Cluster centers get pushed through the same PCA projection
-# so they can be drawn on top of the points.
+# The centers (red X) are pushed through the same PCA
+# projectors so they appear on top of the points.
 
-centroids_pca = pca.transform(final_kmeans.cluster_centers_)
-
-plt.figure(figsize=(8, 6))
-plt.scatter(
-    X_pca[:, 0],
-    X_pca[:, 1],
-    c=cluster_labels,
-    cmap="viridis",
-    s=50
-)
-plt.scatter(
-    centroids_pca[:, 0],
-    centroids_pca[:, 1],
-    marker="X",
-    color="red",
-    s=200,
-    label="Centroids"
-)
-plt.xlabel("Principal Component 1")
-plt.ylabel("Principal Component 2")
-plt.title("K-Means Clusters and Centroids")
-plt.legend()
-plt.show()
-
-
-# --- Plot: the same points colored by TRUE species ---
+centers_2d = pca.transform(final_kmeans.cluster_centers_)
 
 plt.figure(figsize=(8, 6))
-for species_name in ["setosa", "versicolor", "virginica"]:
-    mask = (true_species.values == species_name)
-    plt.scatter(
-        X_pca[mask, 0],
-        X_pca[mask, 1],
-        s=50,
-        label=species_name
-    )
+plt.scatter(X_2d[:, 0], X_2d[:, 1],
+            c=cluster_labels, cmap="viridis", s=50)
+plt.scatter(centers_2d[:, 0], centers_2d[:, 1],
+            marker="X", color="red", s=200, label="Centers")
 plt.xlabel("Principal Component 1")
 plt.ylabel("Principal Component 2")
-plt.title("True Iris Species (for comparison)")
+plt.title("Clusters with Their Centers")
 plt.legend()
 plt.show()
 
 
 # ------------------------------------------------------------
-# 10. FINAL SUMMARY
+# STEP 9: COMPARE WHAT K-MEANS FOUND WITH THE TRUE SPECIES
 # ------------------------------------------------------------
 
-print("\n====================================")
-print("K-MEANS CLUSTERING COMPLETED")
-print("====================================")
+# Cluster vs true species table: K-means could and did group
+# setosa perfectly; versicolor and virginica partially merge.
 
-print("Data points:          ", len(X))
-print("Chosen K:             ", best_k)
-print("Silhouette Score:     ", round(silhouette_final, 4))
-print("Davies-Bouldin Score: ", round(davies_final, 4))
-print("WCSS:                 ", round(final_kmeans.inertia_, 4))
-print("\nK-means found structure in unlabeled data - compare the")
-print("cluster/species table above to see how well it matches!")
+print("\n=== FOUND CLUSTERS vs TRUE SPECIES ===")
+print(pd.crosstab(cluster_labels, true_species.values))
+
+plt.figure(figsize=(8, 6))
+for species in ["setosa", "versicolor", "virginica"]:
+    mask = (true_species.values == species)
+    plt.scatter(X_2d[mask, 0], X_2d[mask, 1],
+                s=50, label=species)
+plt.xlabel("Principal Component 1")
+plt.ylabel("Principal Component 2")
+plt.title("True Species (K-means never saw these)")
+plt.legend()
+plt.show()
+
+print("\nK-means discovered real structure in unlabeled data!")

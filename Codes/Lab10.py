@@ -1,11 +1,11 @@
 # ============================================================
-# LAB 10: ENSEMBLE LEARNING
-# Random Forest vs Linear Regression
-# Dataset: California Housing
+# LAB 10: ENSEMBLE LEARNING - RANDOM FOREST vs LINEAR REGRESSION
+# Dataset: California Housing (bundled with sklearn, no internet)
 #
-# Goal: show that combining MANY decision trees (a Random
-# Forest) beats a single linear model on data where the
-# relationships are not straight lines.
+# Big picture: one "smart guesser" can be beaten by the
+# AVERAGE of many slightly different guessers.
+# Random Forest = 100 decision trees, each trained on a
+# random sample of the data; the final answer is their mean.
 # ============================================================
 
 import numpy as np
@@ -18,49 +18,42 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import (
-    mean_squared_error,
-    mean_absolute_error,
-    r2_score
+    mean_squared_error, mean_absolute_error, r2_score
 )
 
 
 # ------------------------------------------------------------
-# 1. LOAD THE DATASET
+# STEP 1: LOAD THE DATA
 # ------------------------------------------------------------
 
-data = fetch_california_housing(as_frame=True)
+housing = fetch_california_housing(as_frame=True)
+df = housing.frame.copy()
 
-df = data.frame.copy()
-
-print("First 5 Rows:")
+print("Data shape:", df.shape)
+print("\nFirst 5 rows:")
 print(df.head())
 
-print("\nDataset Shape:", df.shape)
-
 
 # ------------------------------------------------------------
-# 2. SEPARATE FEATURES AND TARGET, THEN SPLIT
+# STEP 2: SEPARATE FEATURES/TARGET AND SPLIT
 # ------------------------------------------------------------
 
 X = df.drop("MedHouseVal", axis=1)
 y = df["MedHouseVal"]
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=0.2,
-    random_state=42
+    X, y, test_size=0.2, random_state=42
 )
 
-print("\nTraining Data:", X_train.shape)
-print("Testing Data: ", X_test.shape)
+print("\nTrain size:", X_train.shape, " Test size:", X_test.shape)
 
 
 # ------------------------------------------------------------
-# 3. BASELINE MODEL - LINEAR REGRESSION
+# STEP 3: TRAIN MODEL 1 - LINEAR REGRESSION (ONE STRAIGHT LINE)
 # ------------------------------------------------------------
 
-# A single straight-line model. Fast and simple, but it
-# cannot capture curves or interactions between features.
+# Simple, fast, easy to interpret. Weakness: real house
+# prices are NOT a straight-line function of the features.
 
 linear_model = LinearRegression()
 linear_model.fit(X_train, y_train)
@@ -68,149 +61,132 @@ linear_predictions = linear_model.predict(X_test)
 
 
 # ------------------------------------------------------------
-# 4. ENSEMBLE MODEL - RANDOM FOREST (100 TREES)
+# STEP 4: TRAIN MODEL 2 - RANDOM FOREST (100 TREES)
 # ------------------------------------------------------------
 
-# A Random Forest trains 100 decision trees, each on a random
-# sample of rows (bootstrap) and a random subset of features.
-# The final prediction = the AVERAGE of all 100 trees.
-# Averaging shaky trees gives one very stable model.
+# Each tree:
+#   - sees a random BOOTSTRAP sample of rows (with replacement)
+#   - at every split considers only a RANDOM SUBSET of features
+# Alone, each tree overfits badly. Averaged together, the
+# random errors cancel out and the forest becomes accurate.
+# (This averaging idea is called BAGGING.)
 
 rf_model = RandomForestRegressor(
-    n_estimators=100,   # number of trees in the forest
-    max_depth=15,       # cap tree size to avoid crazy overfitting
+    n_estimators=100,      # number of trees
+    max_depth=15,          # don't let trees grow insanely deep
     random_state=42,
-    n_jobs=-1           # use all CPU cores (faster fitting)
+    n_jobs=-1              # use all CPU cores (faster)
 )
-
 rf_model.fit(X_train, y_train)
 rf_predictions = rf_model.predict(X_test)
 
-print("\nBoth Models Trained Successfully!")
+print("\nBoth models trained!")
 
 
 # ------------------------------------------------------------
-# 5. EVALUATE BOTH MODELS WITH THE SAME METRICS
+# STEP 5: EVALUATE BOTH WITH THE SAME FOUR METRICS
 # ------------------------------------------------------------
 
-def evaluate_model(name, true_values, predictions):
-    """Return a one-row table of common regression metrics."""
+# MSE  - mean squared error (punishes big misses)
+# RMSE - sqrt of MSE, same units as price
+# MAE  - mean absolute error (robust to outliers)
+# R2   - share of price variance explained (1 = perfect)
 
-    mse = mean_squared_error(true_values, predictions)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(true_values, predictions)
-    r2 = r2_score(true_values, predictions)
-
+def evaluate(name, truth, prediction):
+    mse = mean_squared_error(truth, prediction)
+    mae = mean_absolute_error(truth, prediction)
+    r2 = r2_score(truth, prediction)
     print(f"\n{name}")
-    print("  MSE : ", round(mse, 4))
-    print("  RMSE: ", round(rmse, 4))
-    print("  MAE : ", round(mae, 4))
-    print("  R2  : ", round(r2, 4))
+    print("  MSE :", round(mse, 4))
+    print("  RMSE:", round(np.sqrt(mse), 4))
+    print("  MAE :", round(mae, 4))
+    print("  R2  :", round(r2, 4))
+    return [name, mse, np.sqrt(mse), mae, r2]
 
-    return {
-        "Model": name,
-        "MSE": mse,
-        "RMSE": rmse,
-        "MAE": mae,
-        "R2 Score": r2
-    }
+linear_row = evaluate("Linear Regression", y_test, linear_predictions)
+rf_row = evaluate("Random Forest", y_test, rf_predictions)
 
+results = pd.DataFrame(
+    [linear_row, rf_row],
+    columns=["Model", "MSE", "RMSE", "MAE", "R2 Score"])
 
-linear_row = evaluate_model(
-    "Linear Regression", y_test, linear_predictions
-)
-rf_row = evaluate_model(
-    "Random Forest", y_test, rf_predictions
-)
-
-results = pd.DataFrame([linear_row, rf_row])
-
-print("\n========== SIDE-BY-SIDE COMPARISON ==========")
+print("\n=== SIDE-BY-SIDE COMPARISON ===")
 print(results.round(4))
 
 
 # ------------------------------------------------------------
-# 6. VISUALIZE: ERROR COMPARISON
+# STEP 6: VISUALIZE WHO WON
 # ------------------------------------------------------------
 
-# Lower RMSE / MAE and higher R2 = better model.
-
+# Lower RMSE/MAE and higher R2 = better model.
 plt.figure(figsize=(9, 5))
-plt.bar(results["Model"], results["RMSE"], color="steelblue", label="RMSE")
-plt.bar(results["Model"], results["MAE"], color="orange", label="MAE")
-plt.title("Error Comparison (lower is better)")
-plt.ylabel("Error")
-plt.legend()
+plt.bar(results["Model"], results["RMSE"], color="steelblue")
+plt.title("RMSE Comparison (lower is better)")
+plt.ylabel("RMSE")
 plt.show()
 
 plt.figure(figsize=(7, 5))
 plt.bar(results["Model"], results["R2 Score"], color="seagreen")
-plt.ylabel("R2 Score")
 plt.title("R2 Score Comparison (higher is better)")
+plt.ylabel("R2 Score")
 plt.show()
 
 
 # ------------------------------------------------------------
-# 7. ACTUAL VS PREDICTED (RANDOM FOREST)
+# STEP 7: SCATTER PLOT OF RANDOM FOREST PREDICTIONS
 # ------------------------------------------------------------
 
-# Points near the diagonal = good predictions.
+# Points hugging the diagonal = accurate predictions,
+# exactly the improving we hoped for versus the straight line.
 
 plt.figure(figsize=(8, 6))
 plt.scatter(y_test, rf_predictions, alpha=0.3)
-plt.xlabel("Actual House Values")
-plt.ylabel("Predicted House Values")
+plt.xlabel("Actual house value")
+plt.ylabel("Predicted house value")
 plt.title("Random Forest: Actual vs Predicted")
 plt.show()
 
 
 # ------------------------------------------------------------
-# 8. FEATURE IMPORTANCE (WHAT DOES THE FOREST LOOK AT?)
+# STEP 8: WHAT DOES THE FOREST LOOK AT? (FEATURE IMPORTANCE)
 # ------------------------------------------------------------
 
-# Each tree contributes a "how much did this feature reduce
-# error" score during fitting. Averaged over all trees it
-# tells us which features drive the predictions.
+# Every tree split, choosing a feature, lowered the error.
+# Adding up these reductions per feature across all trees
+# tells us which features actually drive predictions.
+# Expect median income (MedInc) to dominate.
 
-importance = pd.DataFrame({
+importance_table = pd.DataFrame({
     "Feature": X.columns,
     "Importance": rf_model.feature_importances_
 })
 
-importance = importance.sort_values(
-    by="Importance",
-    ascending=False
-)
+importance_table = importance_table.sort_values(
+    by="Importance", ascending=False)
 
-print("\n========== FEATURE IMPORTANCE ==========")
-print(importance.round(4))
+print("\n=== FEATURE IMPORTANCE ===")
+print(importance_table.round(4))
 
 plt.figure(figsize=(9, 5))
-sns.barplot(data=importance, x="Importance", y="Feature")
+sns.barplot(data=importance_table, x="Importance", y="Feature")
 plt.title("Random Forest Feature Importance")
 plt.show()
 
 
 # ------------------------------------------------------------
-# 9. FINAL RESULT
+# STEP 9: FINAL VERDICT
 # ------------------------------------------------------------
 
-linear_r2 = linear_row["R2 Score"]
-rf_r2 = rf_row["R2 Score"]
-
-print("\n========== FINAL RESULT ==========")
-
-if rf_r2 > linear_r2:
+if rf_row[4] > linear_row[4]:
     winner = "Random Forest"
 else:
     winner = "Linear Regression"
 
-print(f"The winner is: {winner}")
+print("\n=== FINAL RESULT ===")
+print("Winner:", winner)
+print("Linear Regression R2:", round(linear_row[4], 4))
+print("Random Forest R2:    ", round(rf_row[4], 4))
 
-print("\nLinear Regression R2:", round(linear_r2, 4))
-print("Random Forest R2:    ", round(rf_r2, 4))
-
-print("\nTakeaway: when the data has curved/interaction effects,")
-print("an ensemble of shallow decision trees generalizes far")
-print("better than one straight line - at the cost of being")
-print("harder to interpret and slower to train.")
+print("\nLesson: averaging many randomized models (bagging)")
+print("beats a single rigid model when the data is nonlinear -")
+print("at the price of losing interpretability.")

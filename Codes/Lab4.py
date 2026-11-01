@@ -1,12 +1,12 @@
 # ============================================================
-# LAB 4: POLYNOMIAL REGRESSION
-# Study of Model Complexity and Bias-Variance Trade-off
-# Dataset: Auto MPG
+# LAB 4: POLYNOMIAL REGRESSION AND BIAS-VARIANCE TRADE-OFF
+# Dataset: Auto MPG (OpenML) - needs internet
 #
-# Goal: see what happens when we make a model more
-# and more complex (higher polynomial degree):
-#   - too simple   -> underfits (high bias)
-#   - too complex  -> overfits (high variance)
+# Big picture: a straight line cannot fit curved data.
+# We give the model powers of the input (x, x^2, x^3, ...)
+# and study what happens as the highest power (DEGREE) grows:
+#   - low degree  -> too simple -> UNDERFITTING (high bias)
+#   - high degree -> too flexible -> OVERFITTING (high variance)
 # ============================================================
 
 import numpy as np
@@ -21,153 +21,151 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 
 # ------------------------------------------------------------
-# HELPER FUNCTIONS
-# ------------------------------------------------------------
-
-def fit_polynomial_model(degree, X_train, y_train):
-    """Train one polynomial model and return its 3 parts.
-
-    Step 1: PolynomialFeatures turns x into x, x^2, ..., x^degree
-    Step 2: StandardScaler shrinks the huge powers to a safe range
-    Step 3: LinearRegression fits the equation on the new features
-    """
-    poly = PolynomialFeatures(degree=degree, include_bias=False)
-    scaler = StandardScaler()
-    lin_reg = LinearRegression()
-
-    X_poly = poly.fit_transform(X_train)        # make powers of x
-    X_scaled = scaler.fit_transform(X_poly)     # rescale each power
-    lin_reg.fit(X_scaled, y_train)              # fit the equation
-
-    return poly, scaler, lin_reg
-
-
-def predict_with_parts(poly, scaler, lin_reg, X_data):
-    """Apply the same three steps to new data."""
-    X_poly = poly.transform(X_data)
-    X_scaled = scaler.transform(X_poly)
-    return lin_reg.predict(X_scaled)
-
-
-# ------------------------------------------------------------
-# 1. LOAD THE DATASET (needs internet)
+# STEP 1: LOAD AND CLEAN THE DATA
 # ------------------------------------------------------------
 
 data = fetch_openml(name="autoMpg", version=1, as_frame=True)
 df = data.frame.copy()
 
-print("First 5 Rows:")
-print(df.head())
-
-
-# ------------------------------------------------------------
-# 2. CLEAN THE DATA
-# ------------------------------------------------------------
-
 # On OpenML the MPG column is stored under the name "class".
 df = df.rename(columns={"class": "mpg"})
 
-# "horsepower" contains a few "?" values.
-# to_numeric(..., errors="coerce") turns "?" into NaN,
-# then we remove rows that are missing.
-
+# The horsepower column contains a few "?" marks.
+# to_numeric(..., errors="coerce") replaces them with NaN,
+# then we simply throw those rows away.
 df["horsepower"] = pd.to_numeric(df["horsepower"], errors="coerce")
-df["mpg"] = pd.to_numeric(df["mpg"], errors="coerce")
 df = df.dropna(subset=["horsepower", "mpg"])
 
-# Input: horsepower.  Target: mpg.
-# We keep it as a 1-column table because PolynomialFeatures
-# expects a table, not a plain list.
-
+# Input: horsepower (a curved relationship with MPG).
+# Output: MPG (miles per gallon).
 X = df[["horsepower"]]
 y = df["mpg"]
 
-print("\nDataset Shape after cleaning:", df.shape)
+print("Clean data shape:", df.shape)
 
 
 # ------------------------------------------------------------
-# 3. VISUALIZE THE RAW DATA
+# STEP 2: LOOK AT THE RAW DATA
 # ------------------------------------------------------------
 
 plt.figure(figsize=(8, 5))
 plt.scatter(X, y, alpha=0.5)
 plt.xlabel("Horsepower")
-plt.ylabel("Miles Per Gallon (MPG)")
-plt.title("Horsepower vs MPG - the relationship is curved, not straight")
+plt.ylabel("MPG")
+plt.title("Horsepower vs MPG - clearly a curve, not a line")
 plt.show()
 
 
 # ------------------------------------------------------------
-# 4. TRAIN-TEST SPLIT
+# STEP 3: SPLIT INTO TRAIN AND TEST SETS
 # ------------------------------------------------------------
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
-    test_size=0.2,
-    random_state=42
+    X, y, test_size=0.2, random_state=42
 )
 
 
 # ------------------------------------------------------------
-# 5. TRAIN MODELS OF DEGREE 1 TO 15 AND RECORD THEIR ERRORS
+# STEP 4: TRAIN A POLYNOMIAL MODEL FOR EVERY DEGREE (1..15)
 # ------------------------------------------------------------
 
-degrees = list(range(1, 16))       # 1, 2, 3, ..., 15
+# For each degree we do three things:
+#   a) PolynomialFeatures makes x, x^2, ..., x^degree columns
+#   b) StandardScaler rescales them (x^15 is a huge number,
+#      without scaling the math breaks down)
+#   c) LinearRegression finds the best equation
+#
+# We store the 3 fitted parts in a list so we can reuse them
+# later for plotting and the bootstrap analysis.
 
-kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+degrees = list(range(1, 16))
+fitted_models = []    # one entry per degree = (poly, scaler, reg)
 
-train_errors = []   # RMSE on the training data
-test_errors = []    # RMSE on unseen test data
-cv_errors = []      # average RMSE from 5-fold cross-validation
+train_errors = []     # error on the data the model was trained on
+test_errors = []      # error on unseen test data
+cv_errors = []        # error estimated by 5-fold cross-validation
 
 for degree in degrees:
 
-    # --- A) fit on the training data ---
-    poly, scaler, lin_reg = fit_polynomial_model(degree, X_train, y_train)
+    # a) create power columns
+    poly = PolynomialFeatures(degree=degree, include_bias=False)
+    X_train_poly = poly.fit_transform(X_train)
 
-    train_pred = predict_with_parts(poly, scaler, lin_reg, X_train)
-    test_pred = predict_with_parts(poly, scaler, lin_reg, X_test)
+    # b) rescale the new columns
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_poly)
 
+    # c) fit the equation on the rescaled columns
+    reg = LinearRegression()
+    reg.fit(X_train_scaled, y_train)
+
+    fitted_models.append([poly, scaler, reg])
+
+    # ---- training error (same data as training -> optimistic) ----
+    train_pred = reg.predict(X_train_scaled)
     train_rmse = np.sqrt(mean_squared_error(y_train, train_pred))
+
+    # ---- test error (unseen data -> honest) ----
+    X_test_poly = poly.transform(X_test)
+    X_test_scaled = scaler.transform(X_test_poly)
+    test_pred = reg.predict(X_test_scaled)
     test_rmse = np.sqrt(mean_squared_error(y_test, test_pred))
-
-    # --- B) 5-fold cross-validation (all inside training data) ---
-    # Split the training data into 5 parts. Each time, train on
-    # 4 parts and validate on the 1 held-out part.
-    cv_rmse = 0
-    for subset_a, subset_b in kfold.split(X_train):
-
-        X_fold_train = X_train.iloc[subset_a]
-        y_fold_train = y_train.iloc[subset_a]
-        X_fold_val = X_train.iloc[subset_b]
-        y_fold_val = y_train.iloc[subset_b]
-
-        fold_poly, fold_scaler, fold_reg = fit_polynomial_model(
-            degree, X_fold_train, y_fold_train
-        )
-        fold_pred = predict_with_parts(fold_poly, fold_scaler, fold_reg, X_fold_val)
-
-        cv_rmse = cv_rmse + np.sqrt(mean_squared_error(y_fold_val, fold_pred))
-
-    cv_rmse = cv_rmse / 5  # average over the 5 folds
 
     train_errors.append(train_rmse)
     test_errors.append(test_rmse)
-    cv_errors.append(cv_rmse)
 
-    print(f"Degree {degree:>2}:  "
-          f"train RMSE = {round(train_rmse, 3)},  "
-          f"test RMSE = {round(test_rmse, 3)},  "
-          f"CV RMSE = {round(cv_rmse, 3)}")
+    print(f"Degree {degree:>2}: train RMSE = {round(train_rmse, 3)},",
+          f" test RMSE = {round(test_rmse, 3)}")
 
 
 # ------------------------------------------------------------
-# 6. PLOT TRAINING / TESTING / CV ERRORS vs DEGREE
+# STEP 5: CROSS-VALIDATION - A FAIRER WAY TO COMPARE DEGREES
 # ------------------------------------------------------------
 
-# Expected shape: errors drop at first, then the TEST/CV
-# error goes back up while the TRAIN error keeps falling.
-# That rise = overfitting.
+# A single test set can be "lucky" or "unlucky". Cross-
+# validation trains 5 times on 4/5 of the training data and
+# tests on the held-out 1/5, then averages.
+
+kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+
+for degree in degrees:
+
+    fold_errors = []
+
+    for train_part, val_part in kfold.split(X_train):
+
+        X_part = X_train.iloc[train_part]   # 4/5 of training data
+        y_part = y_train.iloc[train_part]
+        X_val = X_train.iloc[val_part]      # held-out 1/5
+        y_val = y_train.iloc[val_part]
+
+        # fit on the 4/5 part only
+        poly = PolynomialFeatures(degree=degree, include_bias=False)
+        X_part_poly = poly.fit_transform(X_part)
+
+        scaler = StandardScaler()
+        X_part_scaled = scaler.fit_transform(X_part_poly)
+
+        reg = LinearRegression()
+        reg.fit(X_part_scaled, y_part)
+
+        # score on the held-out part
+        X_val_poly = poly.transform(X_val)
+        X_val_scaled = scaler.transform(X_val_poly)
+        val_pred = reg.predict(X_val_scaled)
+        fold_errors.append(np.sqrt(mean_squared_error(y_val, val_pred)))
+
+    cv_errors.append(np.mean(fold_errors))
+
+
+# ------------------------------------------------------------
+# STEP 6: PLOT ALL THREE ERRORS TOGETHER
+# ------------------------------------------------------------
+
+# How to read the plot:
+#   - training error keeps dropping as degree rises
+#   - but test/CV error rises again after the sweet spot
+#     -> that rise is OVERFITTING
 
 plt.figure(figsize=(10, 6))
 plt.plot(degrees, train_errors, marker="o", label="Training RMSE")
@@ -175,185 +173,124 @@ plt.plot(degrees, test_errors, marker="o", label="Testing RMSE")
 plt.plot(degrees, cv_errors, marker="s", label="5-Fold CV RMSE")
 plt.xlabel("Polynomial Degree")
 plt.ylabel("RMSE")
-plt.title("Effect of Polynomial Degree on Prediction Error")
+plt.title("Model Complexity vs Error (the U-shape = bias-variance)")
 plt.legend()
 plt.grid()
 plt.show()
 
 
 # ------------------------------------------------------------
-# 7. PICK THE BEST DEGREE USING CROSS-VALIDATION
+# STEP 7: PICK THE BEST DEGREE AND EVALUATE IT ON THE TEST SET
 # ------------------------------------------------------------
 
-best_index = np.argmin(cv_errors)
+best_index = int(np.argmin(cv_errors))
 best_degree = degrees[best_index]
+poly, scaler, reg = fitted_models[best_index]
 
-plt.figure(figsize=(10, 4))
-plt.bar([str(d) for d in degrees], cv_errors)
-plt.xlabel("Polynomial Degree")
-plt.ylabel("CV RMSE")
-plt.title("Cross-Validation Error for Each Degree")
-plt.show()
+X_test_poly = poly.transform(X_test)
+X_test_scaled = scaler.transform(X_test_poly)
+final_pred = reg.predict(X_test_scaled)
 
-print("\nOptimal Polynomial Degree:", best_degree)
-print("Best CV RMSE:", round(cv_errors[best_index], 4))
-
-
-# ------------------------------------------------------------
-# 8. EVALUATE THE BEST MODEL ON THE TEST SET
-# ------------------------------------------------------------
-
-best_poly, best_scaler, best_reg = fit_polynomial_model(
-    best_degree, X_train, y_train
-)
-
-final_pred = predict_with_parts(best_poly, best_scaler, best_reg, X_test)
-
-final_rmse = np.sqrt(mean_squared_error(y_test, final_pred))
-final_r2 = r2_score(y_test, final_pred)
-
-print("\nBest Model on Test Data")
-print("Test RMSE:", round(final_rmse, 4))
-print("Test R2:  ", round(final_r2, 4))
+print("\nBest degree by cross-validation:", best_degree)
+print("Test RMSE :", round(np.sqrt(mean_squared_error(y_test, final_pred)), 4))
+print("Test R2   :", round(r2_score(y_test, final_pred), 4))
 
 
 # ------------------------------------------------------------
-# 9. VISUALIZE CURVES OF DIFFERENT DEGREES
+# STEP 8: DRAW FITTED CURVES FOR A FEW DEGREES
 # ------------------------------------------------------------
 
-# We draw a smooth line from low to high horsepower for a few
-# degrees. Low degrees = too simple. High degrees = wild curves.
+# We reuse the already-fitted models and just ask them to
+# predict on a smooth grid of horsepower values.
 
-hp_grid = np.linspace(
-    X["horsepower"].min(),
-    X["horsepower"].max(),
-    300
-)
-hp_grid_table = pd.DataFrame({"horsepower": hp_grid})
+hp_grid = pd.DataFrame({
+    "horsepower": np.linspace(
+        X["horsepower"].min(), X["horsepower"].max(), 300)
+})
 
 plt.figure(figsize=(10, 6))
-plt.scatter(X_test, y_test, alpha=0.4, label="Actual Data")
+plt.scatter(X_test, y_test, alpha=0.4, label="Actual data")
 
-for degree in [1, 2, 3, 5, 10, 15]:
-    poly, scaler, lin_reg = fit_polynomial_model(degree, X_train, y_train)
-    grid_pred = predict_with_parts(poly, scaler, lin_reg, hp_grid_table)
-    plt.plot(hp_grid_table, grid_pred, label=f"Degree {degree}")
+for degree in [1, 2, 3, 6, 15]:
+    poly, scaler, reg = fitted_models[degree - 1]
+    curve = reg.predict(scaler.transform(poly.transform(hp_grid)))
+    plt.plot(hp_grid, curve, label=f"Degree {degree}")
 
 plt.xlabel("Horsepower")
 plt.ylabel("MPG")
-plt.title("Polynomial Regression Curves of Different Degrees")
+plt.title("Fitted Curves - degree 15 wiggles wildly (overfitting)")
 plt.legend()
 plt.show()
 
 
 # ------------------------------------------------------------
-# 10. BOOTSTRAP: ESTIMATE BIAS AND VARIANCE OF THE BEST MODEL
+# STEP 9: BOOTSTRAP - MEASURE BIAS AND VARIANCE
 # ------------------------------------------------------------
 
-# Idea: imitate "many different training sets" by sampling the
-# training data WITH REPLACEMENT (a bootstrap sample), fit the
-# best model on each sample, and watch how its predictions move.
-#
-#   bias^2  = squared distance of the AVERAGE prediction from truth
-#   variance = average spread of predictions across the samples
+# Idea: pretend we have many different training sets by
+# sampling the training data WITH REPLACEMENT 30 times.
+#   - BIAS squared  = (average prediction - truth)^2
+#     -> systematic error of the model family
+#   - VARIANCE = how much the predictions move around
+#     between those samples -> sensitivity to data
 
 n_bootstraps = 30
 random_state = np.random.default_rng(42)
-
 y_test_values = y_test.to_numpy()
-prediction_matrix = np.zeros((n_bootstraps, len(X_test)))
 
-for bootstrap_number in range(n_bootstraps):
-
-    # Random indices chosen with replacement = a bootstrap sample
-    sample_indices = random_state.integers(0, len(X_train), len(X_train))
-
-    X_sample = X_train.iloc[sample_indices]
-    y_sample = y_train.iloc[sample_indices]
-
-    poly, scaler, lin_reg = fit_polynomial_model(
-        best_degree, X_sample, y_sample
-    )
-
-    prediction_matrix[bootstrap_number] = predict_with_parts(
-        poly, scaler, lin_reg, X_test
-    )
-
-average_predictions = prediction_matrix.mean(axis=0)
-
-bias_squared = np.mean((average_predictions - y_test_values) ** 2)
-variance = np.mean(np.var(prediction_matrix, axis=0))
-
-print("\n========== BOOTSTRAP BIAS-VARIANCE ANALYSIS ==========")
-print("Estimated Bias Squared:  ", round(bias_squared, 4))
-print("Estimated Variance:      ", round(variance, 4))
-print("Approximate Total Error: ", round(bias_squared + variance, 4))
-print("(true test error is a bit higher; noise accounts for the rest)")
-
-
-# ------------------------------------------------------------
-# 11. COMPARE BIAS AND VARIANCE ACROSS DEGREES
-# ------------------------------------------------------------
-
-# Now repeat the bootstrap for different degrees to SEE the
-# trade-off: low degree -> high bias; high degree -> high variance.
-
-degrees_to_check = [1, 2, 3, 5, 10, 15]
-bias_list = []
-variance_list = []
+degrees_to_check = [1, 2, 3, 6, 10, 15]
+bias_results = []
+variance_results = []
 
 for degree in degrees_to_check:
 
-    bootstrap_predictions = []
+    all_predictions = np.zeros((n_bootstraps, len(X_test)))
 
-    for bootstrap_number in range(n_bootstraps):
+    for b in range(n_bootstraps):
 
         sample_indices = random_state.integers(0, len(X_train), len(X_train))
+
+        # fit the SAME degree on this bootstrap sample
+        poly = PolynomialFeatures(degree=degree, include_bias=False)
+        scaler = StandardScaler()
+        reg = LinearRegression()
 
         X_sample = X_train.iloc[sample_indices]
         y_sample = y_train.iloc[sample_indices]
 
-        poly, scaler, lin_reg = fit_polynomial_model(
-            degree, X_sample, y_sample
-        )
+        poly.fit(X_sample)
+        X_sample_scaled = scaler.fit_transform(poly.transform(X_sample))
+        reg.fit(X_sample_scaled, y_sample)
 
-        bootstrap_predictions.append(
-            predict_with_parts(poly, scaler, lin_reg, X_test)
-        )
+        X_test_poly = poly.transform(X_test)
+        X_test_scaled = scaler.transform(X_test_poly)
+        all_predictions[b] = reg.predict(X_test_scaled)
 
-    bootstrap_predictions = np.array(bootstrap_predictions)
-    average_predictions = bootstrap_predictions.mean(axis=0)
+    average_prediction = all_predictions.mean(axis=0)
 
-    bias_list.append(
-        np.mean((average_predictions - y_test_values) ** 2)
-    )
-    variance_list.append(
-        np.mean(np.var(bootstrap_predictions, axis=0))
-    )
+    bias_squared = np.mean((average_prediction - y_test_values) ** 2)
+    variance = np.mean(np.var(all_predictions, axis=0))
+
+    bias_results.append(bias_squared)
+    variance_results.append(variance)
+
+    print(f"Degree {degree:>2}: bias^2 = {round(bias_squared, 3)},",
+          f" variance = {round(variance, 3)}")
+
+
+# ------------------------------------------------------------
+# STEP 10: PLOT THE TRADE-OFF
+# ------------------------------------------------------------
 
 plt.figure(figsize=(9, 5))
-plt.plot(degrees_to_check, bias_list, marker="o", label="Bias Squared")
-plt.plot(degrees_to_check, variance_list, marker="s", label="Variance")
+plt.plot(degrees_to_check, bias_results, marker="o", label="Bias squared")
+plt.plot(degrees_to_check, variance_results, marker="s", label="Variance")
 plt.xlabel("Polynomial Degree")
-plt.ylabel("Estimated Error Component")
-plt.title("Bias-Variance Trade-off")
+plt.ylabel("Error component")
+plt.title("Bias falls, Variance rises as complexity grows")
 plt.legend()
 plt.grid()
 plt.show()
 
-
-# ------------------------------------------------------------
-# 12. FINAL SUMMARY
-# ------------------------------------------------------------
-
-print("\n=====================================")
-print("POLYNOMIAL REGRESSION EXPERIMENT DONE")
-print("=====================================")
-
-print("Data points:     ", len(df))
-print("Best degree:     ", best_degree)
-print("Best CV RMSE:    ", round(cv_errors[best_index], 4))
-print("Test RMSE:       ", round(final_rmse, 4))
-print("Test R2:         ", round(final_r2, 4))
-print("Bias^2 estimate: ", round(bias_squared, 4))
-print("Variance estimate:", round(variance, 4))
+print("\nTotal error = bias^2 + variance + irreducible noise.")
+print("The best degree sits where their SUM is smallest.")
