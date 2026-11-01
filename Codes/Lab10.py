@@ -1,11 +1,12 @@
-
 # ============================================================
 # LAB 10: ENSEMBLE LEARNING
 # Random Forest vs Linear Regression
 # Dataset: California Housing
+#
+# Goal: show that combining MANY decision trees (a Random
+# Forest) beats a single linear model on data where the
+# relationships are not straight lines.
 # ============================================================
-
-# 1. Import Libraries
 
 import numpy as np
 import pandas as pd
@@ -22,7 +23,10 @@ from sklearn.metrics import (
     r2_score
 )
 
-# 2. Load Dataset
+
+# ------------------------------------------------------------
+# 1. LOAD THE DATASET
+# ------------------------------------------------------------
 
 data = fetch_california_housing(as_frame=True)
 
@@ -33,163 +37,140 @@ print(df.head())
 
 print("\nDataset Shape:", df.shape)
 
-# 3. Separate Features and Target
+
+# ------------------------------------------------------------
+# 2. SEPARATE FEATURES AND TARGET, THEN SPLIT
+# ------------------------------------------------------------
 
 X = df.drop("MedHouseVal", axis=1)
-
 y = df["MedHouseVal"]
 
-# 4. Train-Test Split
-
 X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
+    X, y,
     test_size=0.2,
     random_state=42
 )
 
 print("\nTraining Data:", X_train.shape)
-print("Testing Data:", X_test.shape)
+print("Testing Data: ", X_test.shape)
 
-# 5. Baseline Model - Linear Regression
+
+# ------------------------------------------------------------
+# 3. BASELINE MODEL - LINEAR REGRESSION
+# ------------------------------------------------------------
+
+# A single straight-line model. Fast and simple, but it
+# cannot capture curves or interactions between features.
 
 linear_model = LinearRegression()
-
 linear_model.fit(X_train, y_train)
-
 linear_predictions = linear_model.predict(X_test)
 
-# 6. Ensemble Model - Random Forest
+
+# ------------------------------------------------------------
+# 4. ENSEMBLE MODEL - RANDOM FOREST (100 TREES)
+# ------------------------------------------------------------
+
+# A Random Forest trains 100 decision trees, each on a random
+# sample of rows (bootstrap) and a random subset of features.
+# The final prediction = the AVERAGE of all 100 trees.
+# Averaging shaky trees gives one very stable model.
 
 rf_model = RandomForestRegressor(
-    n_estimators=100,
+    n_estimators=100,   # number of trees in the forest
+    max_depth=15,       # cap tree size to avoid crazy overfitting
     random_state=42,
-    max_depth=15,
-    n_jobs=-1
+    n_jobs=-1           # use all CPU cores (faster fitting)
 )
 
 rf_model.fit(X_train, y_train)
-
 rf_predictions = rf_model.predict(X_test)
 
 print("\nBoth Models Trained Successfully!")
 
-# 7. Evaluate Linear Regression
 
-linear_mse = mean_squared_error(
-    y_test,
-    linear_predictions
+# ------------------------------------------------------------
+# 5. EVALUATE BOTH MODELS WITH THE SAME METRICS
+# ------------------------------------------------------------
+
+def evaluate_model(name, true_values, predictions):
+    """Return a one-row table of common regression metrics."""
+
+    mse = mean_squared_error(true_values, predictions)
+    rmse = np.sqrt(mse)
+    mae = mean_absolute_error(true_values, predictions)
+    r2 = r2_score(true_values, predictions)
+
+    print(f"\n{name}")
+    print("  MSE : ", round(mse, 4))
+    print("  RMSE: ", round(rmse, 4))
+    print("  MAE : ", round(mae, 4))
+    print("  R2  : ", round(r2, 4))
+
+    return {
+        "Model": name,
+        "MSE": mse,
+        "RMSE": rmse,
+        "MAE": mae,
+        "R2 Score": r2
+    }
+
+
+linear_row = evaluate_model(
+    "Linear Regression", y_test, linear_predictions
+)
+rf_row = evaluate_model(
+    "Random Forest", y_test, rf_predictions
 )
 
-linear_rmse = np.sqrt(linear_mse)
+results = pd.DataFrame([linear_row, rf_row])
 
-linear_mae = mean_absolute_error(
-    y_test,
-    linear_predictions
-)
-
-linear_r2 = r2_score(
-    y_test,
-    linear_predictions
-)
-
-# 8. Evaluate Random Forest
-
-rf_mse = mean_squared_error(
-    y_test,
-    rf_predictions
-)
-
-rf_rmse = np.sqrt(rf_mse)
-
-rf_mae = mean_absolute_error(
-    y_test,
-    rf_predictions
-)
-
-rf_r2 = r2_score(
-    y_test,
-    rf_predictions
-)
-
-# 9. Compare Model Performance
-
-results = pd.DataFrame({
-    "Model": [
-        "Linear Regression",
-        "Random Forest"
-    ],
-
-    "MSE": [
-        linear_mse,
-        rf_mse
-    ],
-
-    "RMSE": [
-        linear_rmse,
-        rf_rmse
-    ],
-
-    "MAE": [
-        linear_mae,
-        rf_mae
-    ],
-
-    "R2 Score": [
-        linear_r2,
-        rf_r2
-    ]
-})
-
-print("\n========== MODEL COMPARISON ==========")
-
+print("\n========== SIDE-BY-SIDE COMPARISON ==========")
 print(results.round(4))
 
-# 10. Visualize Model Comparison
 
-results.set_index("Model")[
-    ["RMSE", "MAE"]
-].plot(
-    kind="bar",
-    figsize=(9, 5)
-)
+# ------------------------------------------------------------
+# 6. VISUALIZE: ERROR COMPARISON
+# ------------------------------------------------------------
 
-plt.title("Performance Comparison of Models")
+# Lower RMSE / MAE and higher R2 = better model.
+
+plt.figure(figsize=(9, 5))
+plt.bar(results["Model"], results["RMSE"], color="steelblue", label="RMSE")
+plt.bar(results["Model"], results["MAE"], color="orange", label="MAE")
+plt.title("Error Comparison (lower is better)")
 plt.ylabel("Error")
-plt.xticks(rotation=0)
+plt.legend()
 plt.show()
-
-# 11. Compare R2 Scores
 
 plt.figure(figsize=(7, 5))
-
-plt.bar(
-    results["Model"],
-    results["R2 Score"]
-)
-
+plt.bar(results["Model"], results["R2 Score"], color="seagreen")
 plt.ylabel("R2 Score")
-plt.title("R2 Score Comparison")
+plt.title("R2 Score Comparison (higher is better)")
 plt.show()
 
-# 12. Actual vs Predicted Values
+
+# ------------------------------------------------------------
+# 7. ACTUAL VS PREDICTED (RANDOM FOREST)
+# ------------------------------------------------------------
+
+# Points near the diagonal = good predictions.
 
 plt.figure(figsize=(8, 6))
-
-plt.scatter(
-    y_test,
-    rf_predictions,
-    alpha=0.5
-)
-
+plt.scatter(y_test, rf_predictions, alpha=0.3)
 plt.xlabel("Actual House Values")
 plt.ylabel("Predicted House Values")
-
 plt.title("Random Forest: Actual vs Predicted")
-
 plt.show()
 
-# 13. Feature Importance
+
+# ------------------------------------------------------------
+# 8. FEATURE IMPORTANCE (WHAT DOES THE FOREST LOOK AT?)
+# ------------------------------------------------------------
+
+# Each tree contributes a "how much did this feature reduce
+# error" score during fitting. Averaged over all trees it
+# tells us which features drive the predictions.
 
 importance = pd.DataFrame({
     "Feature": X.columns,
@@ -201,31 +182,35 @@ importance = importance.sort_values(
     ascending=False
 )
 
-print("\nFeature Importance:")
-print(importance)
+print("\n========== FEATURE IMPORTANCE ==========")
+print(importance.round(4))
 
 plt.figure(figsize=(9, 5))
-
-sns.barplot(
-    data=importance,
-    x="Importance",
-    y="Feature"
-)
-
+sns.barplot(data=importance, x="Importance", y="Feature")
 plt.title("Random Forest Feature Importance")
 plt.show()
 
-# 14. Final Result
+
+# ------------------------------------------------------------
+# 9. FINAL RESULT
+# ------------------------------------------------------------
+
+linear_r2 = linear_row["R2 Score"]
+rf_r2 = rf_row["R2 Score"]
 
 print("\n========== FINAL RESULT ==========")
 
 if rf_r2 > linear_r2:
-    print("Random Forest performed better than Linear Regression.")
+    winner = "Random Forest"
 else:
-    print("Linear Regression performed better than Random Forest.")
+    winner = "Linear Regression"
+
+print(f"The winner is: {winner}")
 
 print("\nLinear Regression R2:", round(linear_r2, 4))
+print("Random Forest R2:    ", round(rf_r2, 4))
 
-print("Random Forest R2:", round(rf_r2, 4))
-
-print("\nEnsemble Learning Experiment Completed!")
+print("\nTakeaway: when the data has curved/interaction effects,")
+print("an ensemble of shallow decision trees generalizes far")
+print("better than one straight line - at the cost of being")
+print("harder to interpret and slower to train.")

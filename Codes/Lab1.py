@@ -1,10 +1,11 @@
-
 # ============================================================
 # LAB 1: FEATURE ENGINEERING AND DATA PREPROCESSING
 # Dataset: Titanic Dataset (OpenML)
+#
+# Goal: turn a messy dataset into a clean, numeric,
+# model-ready table. We do every step by hand so that
+# the logic is easy to see and explain.
 # ============================================================
-
-# 1. Import Libraries
 
 import numpy as np
 import pandas as pd
@@ -13,17 +14,16 @@ import seaborn as sns
 
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 
 
-# 2. Load Dataset
+# ------------------------------------------------------------
+# 1. LOAD THE DATASET
+# ------------------------------------------------------------
 
-print("Loading Titanic Dataset...")
+print("Loading Titanic Dataset (needs internet)...")
 
 titanic = fetch_openml(
     name="titanic",
@@ -33,235 +33,217 @@ titanic = fetch_openml(
 
 df = titanic.frame.copy()
 
-print("\nDataset Loaded Successfully!")
+print("\nDataset Loaded!")
 print("\nFirst 5 Rows:")
 print(df.head())
 
 
-# 3. Dataset Exploration
+# ------------------------------------------------------------
+# 2. EXPLORE THE DATASET
+# ------------------------------------------------------------
 
-print("\nDataset Information:")
-print(df.info())
-
-print("\nDataset Shape:")
+print("\nDataset Shape (rows, columns):")
 print(df.shape)
 
-print("\nStatistical Description:")
-print(df.describe(include="all"))
+print("\nColumn Info:")
+df.info()
 
-print("\nMissing Values:")
+print("\nMissing Values in Each Column:")
 print(df.isnull().sum())
 
 
-# 4. Data Cleaning
+# ------------------------------------------------------------
+# 3. SELECT THE COLUMNS WE WANT TO USE
+# ------------------------------------------------------------
 
-# Select relevant features
-features = [
-    "age",
-    "sibsp",
-    "parch",
-    "fare",
-    "pclass",
-    "sex",
-    "embarked"
-]
+# We keep a small, meaningful set of features.
+numeric_columns = ["age", "sibsp", "parch", "fare"]
+category_columns = ["pclass", "sex", "embarked"]
 
-X = df[features].copy()
+X = df[numeric_columns + category_columns].copy()
 y = df["survived"].copy()
 
-# Remove rows where target is missing
-valid_rows = y.notna()
-X = X.loc[valid_rows]
-y = y.loc[valid_rows]
+# Some rows have no recorded survival value - drop them.
+has_target = y.notnull()
+X = X[has_target]
+y = y[has_target].astype(int)
 
-# Convert target into integer values
-y = y.astype(int)
-
-# Separate numerical and categorical columns
-numerical_features = [
-    "age",
-    "sibsp",
-    "parch",
-    "fare"
-]
-
-categorical_features = [
-    "pclass",
-    "sex",
-    "embarked"
-]
+print("\nTarget class counts (0 = died, 1 = survived):")
+print(y.value_counts())
 
 
-# 5. Visualize Missing Values
+# ------------------------------------------------------------
+# 4. VISUALIZE MISSING VALUES
+# ------------------------------------------------------------
 
+# Heatmap: yellow = missing, purple = present.
 plt.figure(figsize=(10, 5))
-
-sns.heatmap(
-    X.isnull(),
-    cbar=False,
-    cmap="viridis"
-)
-
+sns.heatmap(X.isnull(), cbar=False, cmap="viridis")
 plt.title("Missing Values in Titanic Dataset")
 plt.show()
 
 
-# 6. Handling Missing Values
+# ------------------------------------------------------------
+# 5. SPLIT FIRST (BEFORE FILLING MISSING VALUES)
+# ------------------------------------------------------------
 
-# Numerical columns: Median Imputation
-# Categorical columns: Mode Imputation
-
-numeric_transformer = Pipeline(steps=[
-    ("imputer", SimpleImputer(
-        strategy="median",
-        add_indicator=True
-    )),
-    ("scaler", StandardScaler())
-])
-
-categorical_transformer = Pipeline(steps=[
-    ("imputer", SimpleImputer(
-        strategy="most_frequent"
-    )),
-    ("encoder", OneHotEncoder(
-        handle_unknown="ignore"
-    ))
-])
-
-
-# 7. Encoding and Feature Scaling
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ("num", numeric_transformer, numerical_features),
-        ("cat", categorical_transformer, categorical_features)
-    ]
-)
-
-
-# 8. Split Dataset into Training and Testing Sets
+# We split BEFORE looking at the data, so that the test
+# data never influences the statistics we compute.
+# (This avoids "data leakage".)
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
+    X, y,
     test_size=0.2,
     random_state=42,
     stratify=y
 )
 
 print("\nTraining Data Shape:", X_train.shape)
-print("Testing Data Shape:", X_test.shape)
+print("Testing Data Shape: ", X_test.shape)
 
 
-# 9. Apply Feature Engineering
+# ------------------------------------------------------------
+# 6. FILL MISSING VALUES (IMPUTATION)
+# ------------------------------------------------------------
 
-# Fit preprocessing only on training data
-X_train_processed = preprocessor.fit_transform(X_train)
+# Rule used everywhere in ML:
+#   - numeric columns  -> fill with the MEDIAN (robust to outliers)
+#   - category columns -> fill with the MODE (most frequent value)
+# The statistic must come from the TRAINING data only,
+# and the same value is used to fill the test data.
 
-# Transform testing data using the same preprocessing
-X_test_processed = preprocessor.transform(X_test)
+for column in numeric_columns:
 
-# Get transformed feature names
-feature_names = preprocessor.get_feature_names_out()
+    train_median = X_train[column].median()
 
-# Convert processed data into DataFrames
+    X_train[column] = X_train[column].fillna(train_median)
+    X_test[column] = X_test[column].fillna(train_median)
+
+    print(f"Filled {column} with training median = {train_median}")
+
+for column in category_columns:
+
+    train_mode = X_train[column].mode()[0]  # most frequent value
+
+    X_train[column] = X_train[column].fillna(train_mode)
+    X_test[column] = X_test[column].fillna(train_mode)
+
+    print(f"Filled {column} with training mode = '{train_mode}'")
+
+print("\nMissing values after filling:")
+print("Train:", X_train.isnull().sum().sum(),
+      " Test:", X_test.isnull().sum().sum())
+
+
+# ------------------------------------------------------------
+# 7. CONVERT CATEGORIES TO NUMBERS (ONE-HOT ENCODING)
+# ------------------------------------------------------------
+
+# Models cannot work with text like "male" / "female".
+# One-hot encoding makes one new 0/1 column per category.
+
+X_train = pd.get_dummies(X_train, dtype=float)
+X_test = pd.get_dummies(X_test, dtype=float)
+
+# In case a rare category appears in train but not in test
+# (or the other way around), we line up the columns:
+
+X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+
+print("\nColumns after one-hot encoding:")
+print(list(X_train.columns))
+
+
+# ------------------------------------------------------------
+# 8. SCALE ALL FEATURES (STANDARDIZATION)
+# ------------------------------------------------------------
+
+# Standardization: each value becomes (value - mean) / std.
+# After this every column has mean 0 and std 1,
+# so no feature dominates just because of its units.
+
+scaler = StandardScaler()
+
+X_train_processed = scaler.fit_transform(X_train)   # learn mean/std from train...
+X_test_processed = scaler.transform(X_test)         # ...apply the SAME stats to test
+
+# Turn numpy arrays back into DataFrames to keep column names.
 X_train_processed = pd.DataFrame(
-    X_train_processed,
-    columns=feature_names,
-    index=X_train.index
+    X_train_processed, columns=X_train.columns, index=X_train.index
 )
-
 X_test_processed = pd.DataFrame(
-    X_test_processed,
-    columns=feature_names,
-    index=X_test.index
+    X_test_processed, columns=X_train.columns, index=X_test.index
 )
 
-
-# 10. Display Processed Dataset
-
-print("\nProcessed Training Dataset:")
+print("\nProcessed Training Data:")
 print(X_train_processed.head())
 
-print("\nProcessed Dataset Shape:")
-print(X_train_processed.shape)
+print("\nFinal Dataset Shapes:")
+print("Original: ", X.shape)
+print("Train:    ", X_train_processed.shape)
+print("Test:     ", X_test_processed.shape)
 
-print("\nMissing Values After Preprocessing:")
-print(X_train_processed.isnull().sum().sum())
 
+# ------------------------------------------------------------
+# 9. VISUALIZE THE SCALED (NUMERIC) FEATURES
+# ------------------------------------------------------------
 
-# 11. Visualize Scaled Numerical Features
-
-scaled_features = [
-    col for col in X_train_processed.columns
-    if col.startswith("num__")
-]
-
-X_train_processed[scaled_features].hist(
-    figsize=(12, 8),
-    bins=20
-)
-
-plt.suptitle("Distribution of Scaled Numerical Features")
+X_train[numeric_columns].hist(figsize=(12, 8), bins=20)
+plt.suptitle("Distributions After Scaling (numeric columns)")
 plt.tight_layout()
 plt.show()
 
 
-# 12. Correlation Heatmap
+# ------------------------------------------------------------
+# 10. CORRELATION HEATMAP
+# ------------------------------------------------------------
+
+# Shows numeric relationships between the engineered features.
+# Values near +1 or -1 are strong correlations; near 0 is weak.
 
 plt.figure(figsize=(12, 8))
-
 sns.heatmap(
     X_train_processed.corr(),
     cmap="coolwarm",
+    center=0,
     annot=False
 )
-
 plt.title("Correlation Heatmap of Processed Features")
 plt.show()
 
 
-# 13. Model Training (Optional Demonstration)
+# ------------------------------------------------------------
+# 11. SMALL DEMO: DOES THIS DATA WORK FOR A MODEL?
+# ------------------------------------------------------------
+
+# A quick logistic regression to show the processed data
+# really is model-ready (this is a demo, not the main focus).
 
 model = LogisticRegression(max_iter=1000)
 
 model.fit(X_train_processed, y_train)
 
-y_pred = model.predict(X_test_processed)
+predictions = model.predict(X_test_processed)
 
-print("\nModel Evaluation:")
+accuracy = accuracy_score(y_test, predictions)
 
-print(
-    "Accuracy:",
-    round(accuracy_score(y_test, y_pred) * 100, 2),
-    "%"
-)
-
+print("\nDemo Model - Accuracy:", round(accuracy * 100, 2), "%")
 print("\nClassification Report:")
-print(classification_report(y_test, y_pred))
+print(classification_report(y_test, predictions))
 
 
-# 14. Final Output
+# ------------------------------------------------------------
+# 12. FINAL SUMMARY
+# ------------------------------------------------------------
 
-print("\n====================================")
+print("====================================")
 print("FEATURE ENGINEERING COMPLETED")
 print("====================================")
 
-print("Original Dataset Shape:", X.shape)
-
-print(
-    "Processed Training Dataset:",
-    X_train_processed.shape
-)
-
-print(
-    "Processed Testing Dataset:",
-    X_test_processed.shape
-)
-
-print(
-    "Remaining Missing Values:",
-    X_train_processed.isnull().sum().sum()
-)
+print("Original shape:  ", X.shape)
+print("Train shape:     ", X_train_processed.shape)
+print("Test shape:      ", X_test_processed.shape)
+print("Missing values left:",
+      X_train_processed.isnull().sum().sum())
 
 print("\nDataset is ready for Machine Learning!")
