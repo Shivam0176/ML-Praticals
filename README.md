@@ -15,15 +15,15 @@ pip install numpy pandas matplotlib seaborn scikit-learn statsmodels
 
 ## Lab Index
 
-| Lab | Topic | Dataset | Code | Theory |
-|-----|-------|---------|------|--------|
-| 1 | Feature Engineering & Data Preprocessing | [Titanic (OpenML)](https://www.openml.org/d/40945) | [Lab1.py](./Codes/Lab1.py) | [Theory](./Theory/Lab1_Theory.md) |
-| 3 | Multiple Linear Regression | [California Housing (sklearn)](https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset) | [Lab3.py](./Codes/Lab3.py) | [Theory](./Theory/Lab3_Theory.md) |
-| 4 | Polynomial Regression & Bias-Variance | [Auto MPG (OpenML)](https://www.openml.org/d/42203) | [Lab4.py](./Codes/Lab4.py) | [Theory](./Theory/Lab4_Theory.md) |
-| 5 | Ridge, Lasso & Elastic Net | [Wine Quality — Red (UCI)](https://archive.ics.uci.edu/dataset/186/wine+quality) | [Lab5.py](./Codes/Lab5.py) | [Theory](./Theory/Lab5_Theory.md) |
-| 6 | Logistic Regression | [Breast Cancer (sklearn)](https://scikit-learn.org/stable/datasets/toy_dataset.html#breast-cancer-wisconsin-diagnostic-dataset) | [Lab6.py](./Codes/Lab6.py) | [Theory](./Theory/Lab6_Theory.md) |
-| 8 | K-Means Clustering | [Iris (sklearn)](https://scikit-learn.org/stable/datasets/toy_dataset.html#iris-plants-dataset) | [Lab8.py](./Codes/Lab8.py) | [Theory](./Theory/Lab8_Theory.md) |
-| 10 | Ensemble Learning (Random Forest vs Linear Regression) | [California Housing (sklearn)](https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset) | [Lab10.py](./Codes/Lab10.py) | [Theory](./Theory/Lab10_Theory.md) |
+| Lab | Topic | Dataset | PDF | Code | Theory |
+|-----|-------|---------|-----|------|--------|
+| 1 | Feature Engineering & Data Preprocessing | [Titanic (OpenML)](https://www.openml.org/d/40945) | [PDF](./PDFs/Lab-1.pdf) | [Lab1.py](./Codes/Lab1.py) | [Theory](./Theory/Lab1_Theory.md) |
+| 3 | Multiple Linear Regression | [California Housing (sklearn)](https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset) | [PDF](./PDFs/Lab-3.pdf) | [Lab3.py](./Codes/Lab3.py) | [Theory](./Theory/Lab3_Theory.md) |
+| 4 | Polynomial Regression & Bias-Variance | [Auto MPG (OpenML)](https://www.openml.org/d/42203) | [PDF](./PDFs/Lab-4.pdf) | [Lab4.py](./Codes/Lab4.py) | [Theory](./Theory/Lab4_Theory.md) |
+| 5 | Ridge, Lasso & Elastic Net | [Wine Quality — Red (UCI)](https://archive.ics.uci.edu/dataset/186/wine+quality) | [PDF](./PDFs/Lab-5.pdf) | [Lab5.py](./Codes/Lab5.py) | [Theory](./Theory/Lab5_Theory.md) |
+| 6 | Logistic Regression | [Breast Cancer (sklearn)](https://scikit-learn.org/stable/datasets/toy_dataset.html#breast-cancer-wisconsin-diagnostic-dataset) | [PDF](./PDFs/Lab-6.pdf) | [Lab6.py](./Codes/Lab6.py) | [Theory](./Theory/Lab6_Theory.md) |
+| 8 | K-Means Clustering | [Iris (sklearn)](https://scikit-learn.org/stable/datasets/toy_dataset.html#iris-plants-dataset) | [PDF](./PDFs/Lab-8.pdf) | [Lab8.py](./Codes/Lab8.py) | [Theory](./Theory/Lab8_Theory.md) |
+| 10 | Ensemble Learning (Random Forest vs Linear Regression) | [California Housing (sklearn)](https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset) | [PDF](./PDFs/Lab-10.pdf) | [Lab10.py](./Codes/Lab10.py) | [Theory](./Theory/Lab10_Theory.md) |
 
 ## Lab Descriptions
 
